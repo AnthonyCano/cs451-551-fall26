@@ -53,3 +53,48 @@ We use a library metaphor: original **books** are never edited; changes go on **
 ### Index
 - Primary key index is a dict: `key → base RID`.
 - `sum` iterates `range(start, end + 1)` and skips missing keys.
+
+## Roles
+
+### Claiming a role
+1. Pull the latest `README.md`.
+2. Replace `_unclaimed_` in the **Claimed by** column of the role you want with your name (and GitHub handle).
+3. Commit and push right away (`git commit -m "Claim Role X"`) so nobody double-claims. If the push is rejected, someone claimed first: pull and pick another role.
+4. To release a role, set it back to `_unclaimed_` and push.
+
+| Role | Area | Claimed by |
+|---|---|---|
+| **A** | Pages (the shelves) + testing | _unclaimed_ |
+| **B** | Table (the floor map) | _unclaimed_ |
+| **C** | Point queries (the librarian) | _unclaimed_ |
+| **D** | Index, DB, range/version queries (the card catalog) | _unclaimed_ |
+
+### Person A, Madeline Luu: Pages (the shelves)
+**Files:** `page.py`, new `config.py`
+- `Page`: `has_capacity()`, `write(value)`, `read(slot)`, `update(slot, value)` (8-byte ints, 512 per page).
+- `PageRange`: 16 base pages plus a growing list of tail pages, with one physical `Page` per column (4 metadata columns + user columns).
+- `config.py`: `PAGE_SIZE`, `RECORDS_PER_PAGE`, `BASE_PAGES_PER_RANGE`, `NULL`, `DELETED_RID`.
+- **Also owns testing.** This is the smallest coding piece and finishes first. After that, A gets `__main__.py`, `m1_tester.py`, and `exam_tester_m1.py` running and reports failures to whoever owns the broken part.
+
+### Person B, Vikram T: Table (the floor map)
+**Files:** `table.py`
+- RID counter starting at 1, and `page_directory[rid] = (range_idx, is_tail, page_idx, slot)`.
+- The storage API everyone else calls:
+  - `insert_base(columns)` → `rid`
+  - `append_tail(columns, indirection, schema)` → `rid`
+  - `read_record(rid)` → all columns incl. metadata
+  - `write_meta(rid, column, value)`
+  - `get_version(base_rid, relative_version)` → record; follows the indirection chain (shared by C and D)
+
+### Person C, Rayna P: Point queries (the librarian)
+**Files:** `query.py` (top half)
+- `insert`, `select`, `update`, `delete`, `increment`.
+- `update` is cumulative: read the latest version, apply the non-`None` values, append a tail record.
+- `delete` sets RID = 0 on the book and all its slips, and removes the key from the index.
+- Return `False` on failure (missing key, duplicate key) and never crash.
+
+### Person D, Anthony C: Index, DB, range/version queries (the card catalog)
+**Files:** `index.py`, `db.py`, `query.py` (bottom half)
+- `Index`: `locate`, `locate_range` on the primary-key dict; `create_index` / `drop_index` are optional.
+- `Database`: `create_table`, `drop_table`, `get_table`.
+- `sum`, `sum_version`, `select_version`, all built on B's `get_version`.
