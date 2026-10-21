@@ -1,5 +1,14 @@
-from lstore.table import Table, Record
+from email.mime import base
+
+from lstore.table import (
+    Table,
+    Record,
+    INDIRECTION_COLUMN,
+    RID_COLUMN,
+    SCHEMA_ENCODING_COLUMN,
+)
 from lstore.index import Index
+from lstore.config import NUM_METADATA_COLUMNS, DELETED_RID
 
 
 class Query:
@@ -11,7 +20,35 @@ class Query:
     """
     def __init__(self, table):
         self.table = table
-        pass
+
+    # find record by key
+    def _base_rid(self, primary_key):
+        rids = self.table.index.locate(self.table.key, primary_key)
+        if not rids:
+            return None
+        return rids[0]
+
+    # find records by non-key column
+    def _matching_base_rids(self, value, column):
+        if column == self.table.key:
+            rid = self._base_rid(value)
+            return [] if rid is None else [rid]
+        matching_rids = []
+        for rid, (_, is_tail, _, _) in self.table.page_directory.items():
+            if is_tail:
+                continue
+            row = self.table.get_version(rid, 0)
+            if row[RID_COLUMN] == DELETED_RID:
+                continue
+            if row[NUM_METADATA_COLUMNS + column] == value:
+                matching_rids.append(rid)
+        return matching_rids
+
+    # turn row into a record with projected columns
+    def _to_record(self, base_rid, row, projected_columns_index):
+        values = row[NUM_METADATA_COLUMNS:]
+        columns = [v for v, keep in zip(values, projected_columns_index) if keep]
+        return Record(base_rid, values[self.table.key], columns)
 
     
     """
@@ -20,8 +57,24 @@ class Query:
     # Returns True upon succesful deletion
     # Return False if record doesn't exist or is locked due to 2PL
     """
+    # stamp all tail records and base record as deleted by setting index to 0
+    # remove key from index
     def delete(self, primary_key):
-        pass
+        try:
+            base_rid = self._base_rid(primary_key)
+            if base_rid is None:
+                return False
+            # stamp every slip WITHDRAWN, newest first, until we're back at the book
+            current_rid = self.table.read_record(base_rid)[INDIRECTION_COLUMN]
+            while current_rid != base_rid:
+                previous_rid = self.table.read_record(current_rid)[INDIRECTION_COLUMN]
+                self.table.write_meta(current_rid, RID_COLUMN, DELETED_RID)
+                current_rid = previous_rid
+            self.table.write_meta(base_rid, RID_COLUMN, DELETED_RID)
+            self.table.index.remove(primary_key)
+            return True
+        except Exception:
+            return False
     
     
     """
@@ -29,9 +82,21 @@ class Query:
     # Return True upon succesful insertion
     # Returns False if insert fails for whatever reason
     """
+    # has to have same # of columns as table, no none values, no duplicate primary key
     def insert(self, *columns):
-        schema_encoding = '0' * self.table.num_columns
-        pass
+        try:
+            if len(columns) != self.table.num_columns:
+                return False
+            if any(c is None for c in columns):
+                return False
+            key = columns[self.table.key]
+            if self._base_rid(key) is not None:
+                return False 
+            rid = self.table.insert_base(columns)
+            self.table.index.add(key, rid)
+            return True
+        except Exception:
+            return False
 
     
     """
@@ -43,8 +108,18 @@ class Query:
     # Returns False if record locked by TPL
     # Assume that select will never be called on a key that doesn't exist
     """
+    # find matching record with specified key
+    # give latest version of record with newest tail record
+    # build new result
     def select(self, search_key, search_key_index, projected_columns_index):
-        pass
+        try:
+            records = []
+            for rid in self._matching_base_rids(search_key, search_key_index):
+                row = self.table.get_version(rid, 0)
+                records.append(self._to_record(rid, row, projected_columns_index))
+            return records
+        except Exception:
+            return False
 
     
     """
@@ -66,8 +141,40 @@ class Query:
     # Returns True if update is succesful
     # Returns False if no records exist with given key or if the target record cannot be accessed due to 2PL locking
     """
+    # none means to leave as is: no changes
+    # check input and check key collision
+    # build a tail record, file the tail record, move pointer, update scheme encoding, update index (if key changes)
     def update(self, primary_key, *columns):
-        pass
+        try:
+            if len(columns) != self.table.num_columns:
+                return False
+            base_rid = self._base_rid(primary_key)
+            if base_rid is None:
+                return False
+            if all(c is None for c in columns):
+                return True  # nothing to correct
+            new_key = columns[self.table.key]
+            is_key_change = new_key is not None and new_key != primary_key
+            if is_key_change and self._base_rid(new_key) is not None:
+                return False  # new call number already taken
+            base_row = self.table.read_record(base_rid)
+            new_row = list(self.table.get_version(base_rid, 0)[NUM_METADATA_COLUMNS:])
+            schema = 0
+            for index, col in enumerate(columns):
+                if col is not None:
+                    new_row[index] = col
+                    schema |= 1 << index
+            # file the slip, then move the book's sticky note to it
+            new_tail_rid = self.table.append_tail(new_row, base_row[INDIRECTION_COLUMN], schema)
+            self.table.write_meta(base_rid, INDIRECTION_COLUMN, new_tail_rid)
+            self.table.write_meta(base_rid, SCHEMA_ENCODING_COLUMN,
+                                  base_row[SCHEMA_ENCODING_COLUMN] | schema)
+            if is_key_change:
+                self.table.index.remove(primary_key)
+                self.table.index.add(new_key, base_rid)
+            return True
+        except Exception:
+            return False
 
     
     """

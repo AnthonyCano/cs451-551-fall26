@@ -1,0 +1,235 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>L-Store Build Plan</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style id="css">
+:root {
+  --bg: #F3F6F8; --surface: #FFFFFF; --ink: #15212B; --muted: #586A78;
+  --line: #C3CFD8; --grid: #DCE4EA; --accent: #24619E; --accent-soft: #DCE8F4;
+  --done: #2F7D4F; --warn: #B5470F;
+  --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0E151B; --surface: #151F27; --ink: #E2E9EF; --muted: #94A5B2;
+    --line: #34444F; --grid: #24323C; --accent: #6FA9E6; --accent-soft: #1B3249;
+    --done: #5FBF86; --warn: #F0915A;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0E151B; --surface: #151F27; --ink: #E2E9EF; --muted: #94A5B2;
+  --line: #34444F; --grid: #24323C; --accent: #6FA9E6; --accent-soft: #1B3249;
+  --done: #5FBF86; --warn: #F0915A;
+}
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; padding: 0 16px; }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 36px 64px; display: grid; gap: 28px; }
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1 { font-family: var(--display); font-size: clamp(30px, 5vw, 42px); line-height: 1.08; margin: 0; text-wrap: balance; }
+.lede { margin: 0; color: var(--muted); max-width: 64ch; }
+.summary { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; font-size: 14px; }
+.meter { flex: 1 1 220px; height: 8px; background: var(--grid); border-radius: 4px; overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--done); }
+.count { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.status { font-family: var(--mono); font-size: 12px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; background: var(--surface); }
+.status.warn { color: var(--warn); }
+.due { font-family: var(--mono); font-size: 13px; }
+.due b { color: var(--warn); font-weight: 500; }
+
+.tips { background: var(--accent-soft); border-radius: 6px; padding: 14px 18px; display: grid; gap: 6px; font-size: 14px; }
+.tips h2 { font-family: var(--display); font-size: 16px; margin: 0; }
+.tips ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+
+.stages { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; counter-reset: st; }
+.stage { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; display: grid; gap: 12px; }
+.stage.complete { border-color: var(--done); }
+.stage-head { display: grid; grid-template-columns: auto 1fr auto; gap: 4px 14px; align-items: baseline; }
+.num { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+.stage.complete .num { color: var(--done); }
+.stage h3 { font-family: var(--display); font-size: 21px; margin: 0; text-wrap: balance; }
+.dates { font-family: var(--mono); font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.goal { margin: 0; color: var(--muted); font-size: 14px; grid-column: 2 / -1; }
+.bar { height: 4px; background: var(--grid); border-radius: 2px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--done); }
+.tasks { list-style: none; margin: 0; padding: 0; display: grid; }
+.tasks li { border-top: 1px solid var(--grid); }
+.tasks label { display: grid; grid-template-columns: 20px 1fr; gap: 10px; padding: 8px 0; cursor: pointer; align-items: start; }
+.tasks input { width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--done); }
+.tasks input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tasks .done span { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--line); }
+.tasks code, .exit code, .tips code { font-family: var(--mono); font-size: .88em; overflow-wrap: anywhere; }
+.foot { display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: space-between; align-items: center; border-top: 1px solid var(--grid); padding-top: 12px; }
+.exit { font-size: 13.5px; margin: 0; flex: 1 1 300px; }
+.exit b { font-weight: 600; }
+.who { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.who input { font: inherit; font-size: 13.5px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 8px; width: 160px; }
+.who input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ro .tasks label { cursor: default; }
+@media (max-width: 560px) {
+  .stage-head { grid-template-columns: auto 1fr; }
+  .dates { grid-column: 2; }
+  .goal { grid-column: 1 / -1; }
+}
+@media (prefers-reduced-motion: no-preference) { .meter > i, .bar > i { transition: width .25s ease; } }
+</style>
+<div id="app"></div>
+<script type="application/json" id="state">{"stages":[{"id":"s0","title":"Setup and design decisions","dates":"Oct 8 – Oct 10","goal":"Everyone can run the code, and the team agrees on the design before anyone writes storage code.","tasks":[{"id":"s0t1","text":"Everyone clones the repo and runs <code>python3 __main__.py</code> from the repo root. It fails for now. That is expected.","done":false},{"id":"s0t2","text":"Set up a shared GitHub repo. Agree on one branch per feature and merging through pull requests.","done":false},{"id":"s0t3","text":"Everyone reads the L-Store paper sections on base records, tail records and indirection.","done":false},{"id":"s0t4","text":"Decide: cumulative or non-cumulative tail records. Cumulative is easier, because <code>exam_tester_m1.py</code> asks for versions 0, -1 and -2.","done":false},{"id":"s0t5","text":"Decide the record layout: 4 metadata columns (<code>INDIRECTION</code>, <code>RID</code>, <code>TIMESTAMP</code>, <code>SCHEMA_ENCODING</code>) followed by the data columns.","done":false},{"id":"s0t6","text":"Decide the RID scheme, page range size (for example 16 base pages), the NULL marker and how a deleted record is marked.","done":false},{"id":"s0t7","text":"Write the decisions in the README so everyone codes against the same plan.","done":false}],"exit":"Decisions are in the README and everyone can run the testers.","who":""},{"id":"s1","title":"Pages and config","dates":"Oct 10 – Oct 12","goal":"Store and read 64-bit integers in a 4096-byte page.","tasks":[{"id":"s1t1","text":"Create <code>lstore/config.py</code>: page size 4096, 512 values per page, base pages per range, NULL marker.","done":false},{"id":"s1t2","text":"Implement <code>Page.has_capacity()</code> and <code>Page.write(value)</code>. <code>write</code> returns the slot number.","done":false},{"id":"s1t3","text":"Add <code>Page.read(slot)</code> and <code>Page.update(slot, value)</code>. Only indirection and schema encoding are changed in place.","done":false},{"id":"s1t4","text":"Quick test: write 512 values, read them all back, check that a 513th write is refused.","done":false}],"exit":"The page test passes.","who":""},{"id":"s2","title":"Table storage, index and database","dates":"Oct 12 – Oct 15","goal":"Write a raw record into pages and find it again by RID.","tasks":[{"id":"s2t1","text":"Add a <code>PageRange</code> class that holds its base pages and its tail pages. Each logical page is a list of <code>Page</code> objects, one per column.","done":false},{"id":"s2t2","text":"Allocate a new base page when the current one is full, and a new page range when the range is full.","done":false},{"id":"s2t3","text":"Add a RID counter and fill <code>page_directory[rid]</code> with (range, base or tail, page index, slot).","done":false},{"id":"s2t4","text":"Write <code>Table</code> helpers: <code>write_base_record</code>, <code>write_tail_record</code>, <code>read_record(rid)</code>.","done":false},{"id":"s2t5","text":"Index: a dict from key to RID. Implement <code>locate</code> and <code>locate_range</code>.","done":false},{"id":"s2t6","text":"<code>db.py</code>: keep tables in a dict. Implement <code>create_table</code>, <code>get_table</code>, <code>drop_table</code>.","done":false}],"exit":"A record written through <code>Table</code> reads back correctly by RID, and the index finds its RID by key.","who":""},{"id":"s3","title":"insert and select","dates":"Oct 15 – Oct 17","goal":"The first two queries work end to end.","tasks":[{"id":"s3t1","text":"<code>Query.insert(*columns)</code>: return False for a duplicate key or the wrong number of columns. Write the base record and add it to the index.","done":false},{"id":"s3t2","text":"<code>Query.select(search_key, search_key_index, projected_columns_index)</code>: return a list of <code>Record(rid, key, columns)</code> with only the projected columns.","done":false},{"id":"s3t3","text":"Wrap each query in try/except so a crash returns False, as the skeleton docstring asks.","done":false}],"exit":"<code>__main__.py</code> prints its insert and select timings, and <code>m1_tester.py</code> prints no select errors.","who":""},{"id":"s4","title":"update and versions","dates":"Oct 17 – Oct 20","goal":"Updates go to tail records, and reads follow the lineage.","tasks":[{"id":"s4t1","text":"<code>update(primary_key, *columns)</code>: append a tail record. <code>None</code> means the column is unchanged.","done":false},{"id":"s4t2","text":"Link the chain: the new tail record points to the previous tail record. The base record's indirection points to the new tail record.","done":false},{"id":"s4t3","text":"Set the base record's schema encoding bits for the updated columns.","done":false},{"id":"s4t4","text":"Make <code>select</code> return the newest values by following indirection.","done":false},{"id":"s4t5","text":"<code>select_version(..., relative_version)</code>: 0 is the newest, -1 is one update back. If there are fewer versions, return the base record.","done":false}],"exit":"<code>exam_tester_m1.py</code> prints no update or select errors.","who":""},{"id":"s5","title":"delete and sum","dates":"Oct 20 – Oct 22","goal":"All required queries are in place.","tasks":[{"id":"s5t1","text":"<code>delete(primary_key)</code>: invalidate the base record and its tail records, then remove the key from the index.","done":false},{"id":"s5t2","text":"<code>sum(start_range, end_range, aggregate_column_index)</code> with <code>locate_range</code>. Return False when no record is in the range.","done":false},{"id":"s5t3","text":"<code>sum_version(...)</code>: the same sum, using the values that <code>select_version</code> would return.","done":false}],"exit":"<code>__main__.py</code> runs to the end, and both testers print no error lines.","who":""},{"id":"s6","title":"Hardening and submission","dates":"Oct 22 – Oct 26","goal":"Submit a clean build with a day to spare.","tasks":[{"id":"s6t1","text":"Run <code>__main__.py</code>, <code>m1_tester.py</code> and <code>exam_tester_m1.py</code> on a fresh clone of the final branch.","done":false},{"id":"s6t2","text":"Check edge cases: update or delete of a missing key returns False, and select after delete finds nothing.","done":false},{"id":"s6t3","text":"Clean up: remove debug prints, add comments, put team names in the README.","done":false},{"id":"s6t4","text":"Optional extras if time allows: secondary index, a graph comparing cumulative and non-cumulative updates or page sizes.","done":false},{"id":"s6t5","text":"Target Oct 25: one member zips the project and submits it on Canvas. The hard deadline is Oct 26, 11:59pm.","done":false}],"exit":"Submitted on Canvas.","who":""}]}</script>
+<script>
+(function () {
+  var plan = JSON.parse(document.getElementById("state").textContent);
+  var ticks = {};   // task id -> true/false, from db "ticks"
+  var owners = {};  // stage id -> name, from db "owners"
+  var db = null;
+  var canWrite = false;
+  var statusText = "Connecting…";
+  var statusWarn = false;
+  var ownerTimers = {};
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function isDone(t) { return ticks[t.id] === true; }
+
+  function counts(tasks) {
+    var d = 0;
+    tasks.forEach(function (t) { if (isDone(t)) d++; });
+    return { done: d, total: tasks.length };
+  }
+
+  function body() {
+    var all = [];
+    plan.stages.forEach(function (s) { all = all.concat(s.tasks); });
+    var c = counts(all);
+    var pct = c.total ? Math.round(100 * c.done / c.total) : 0;
+    var ro = !canWrite;
+    var h = '<div class="wrap' + (ro ? " ro" : "") + '">';
+    h += '<header><div class="eyebrow">CS 451/551 · Assignment 1 · Team plan</div>';
+    h += "<h1>L-Store Build Plan</h1>";
+    h += '<p class="lede">Seven stages, built bottom-up. Each stage ends with a check you can run before the next one starts. Ticks and owner names update live for the whole team.</p>';
+    h += '<div class="summary"><span class="count">' + c.done + " / " + c.total + ' tasks</span><div class="meter" role="progressbar" aria-label="Overall progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"><i style="width:' + pct + '%"></i></div><span class="due">Due <b>Oct 26 · 11:59pm</b></span><span class="status' + (statusWarn ? " warn" : "") + '" id="status">' + esc(statusText) + "</span></div></header>";
+    h += '<div class="tips"><h2>Working in parallel</h2><ul>';
+    h += "<li>During stage 1, one person can write <code>index.py</code> and <code>db.py</code> while another writes <code>page.py</code>.</li>";
+    h += "<li>After stage 3, update/versions (stage 4) and delete/sum (stage 5) can run side by side.</li>";
+    h += "<li>The testers print only errors. A run with no error lines means it passed.</li>";
+    h += "</ul></div>";
+    h += '<ol class="stages">';
+    plan.stages.forEach(function (s, i) {
+      var sc = counts(s.tasks);
+      var sp = sc.total ? Math.round(100 * sc.done / sc.total) : 0;
+      h += '<li class="stage' + (sc.done === sc.total ? " complete" : "") + '">';
+      h += '<div class="stage-head"><span class="num">Stage ' + i + "</span><h3>" + esc(s.title) + '</h3><span class="dates">' + esc(s.dates) + '</span><p class="goal">' + esc(s.goal) + "</p></div>";
+      h += '<div class="bar" aria-hidden="true"><i style="width:' + sp + '%"></i></div>';
+      h += '<ul class="tasks">';
+      s.tasks.forEach(function (t) {
+        var d = isDone(t);
+        h += '<li class="' + (d ? "done" : "") + '"><label><input type="checkbox" id="' + t.id + '" data-task="' + t.id + '"' + (d ? " checked" : "") + (ro ? " disabled" : "") + "><span>" + t.text + "</span></label></li>";
+      });
+      h += "</ul>";
+      h += '<div class="foot"><p class="exit"><b>Done when:</b> ' + s.exit + '</p><label class="who" for="who-' + s.id + '">Owner <input id="who-' + s.id + '" data-who="' + s.id + '" type="text" maxlength="40" placeholder="Name" value="' + esc(owners[s.id] || "") + '"' + (ro ? " disabled" : "") + "></label></div>";
+      h += "</li>";
+    });
+    h += "</ol></div>";
+    return h;
+  }
+
+  function render() {
+    var app = document.getElementById("app");
+    var a = document.activeElement;
+    var focusId = a && a.id;
+    // keep a half-typed owner name from being overwritten by a snapshot
+    var typing = a && a.dataset && a.dataset.who ? { id: a.id, value: a.value, start: a.selectionStart, end: a.selectionEnd } : null;
+    app.innerHTML = body();
+    if (focusId) {
+      var f = document.getElementById(focusId);
+      if (f) {
+        f.focus();
+        if (typing && typing.id === focusId) { f.value = typing.value; try { f.setSelectionRange(typing.start, typing.end); } catch (e) {} }
+      }
+    }
+  }
+
+  function setStatus(text, warn) {
+    statusText = text;
+    statusWarn = !!warn;
+    var el = document.getElementById("status");
+    if (el) { el.textContent = text; el.className = "status" + (warn ? " warn" : ""); }
+  }
+
+  function goReadOnly() {
+    canWrite = false;
+    setStatus("View only. Ask the owner for Contributor access to tick tasks.", true);
+    render();
+  }
+
+  function onWriteError(e) {
+    var code = e && e.code;
+    if (code === "invalid_argument" || code === "not_granted" || code === "revoked") { goReadOnly(); return; }
+    if (code === "resource_exhausted") { setStatus("Too many changes at once. Wait a moment.", true); return; }
+    setStatus("Could not save that change. Try again.", true);
+  }
+
+  document.getElementById("app").addEventListener("change", function (e) {
+    var t = e.target;
+    if (!db || !canWrite) return;
+    if (t.dataset.task) {
+      var id = t.dataset.task;
+      ticks[id] = t.checked;
+      render();
+      db.doc("ticks/" + id).set({ done: t.checked }).catch(function (err) { onWriteError(err); });
+    }
+  });
+
+  document.getElementById("app").addEventListener("input", function (e) {
+    var t = e.target;
+    if (!db || !canWrite || !t.dataset.who) return;
+    var sid = t.dataset.who;
+    var value = t.value.slice(0, 40);
+    clearTimeout(ownerTimers[sid]);
+    ownerTimers[sid] = setTimeout(function () {
+      if ((owners[sid] || "") === value) return;
+      owners[sid] = value;
+      db.doc("owners/" + sid).set({ name: value }).catch(function (err) { onWriteError(err); });
+    }, 800);
+  });
+
+  render();
+
+  function start() {
+    if (!(window.claude && window.claude.use)) { setStatus("Live sync is not available here", true); render(); return; }
+    Promise.all([window.claude.use("db"), window.claude.use("user")]).then(function (r) {
+      db = r[0];
+      var user = r[1];
+      if (!db) { setStatus("Sign in to see the team's progress", true); render(); return; }
+      var permission = user && user.can ? Promise.resolve(user.can("data.write")) : Promise.resolve(null);
+      permission.then(function (can) {
+        // null = not told; keep inputs and let a refused write decide
+        canWrite = can !== false;
+        if (canWrite) setStatus("Live · changes sync for the team");
+        else setStatus("View only. Ask the owner for Contributor access to tick tasks.", true);
+        render();
+      });
+      db.collection("ticks").onSnapshot(function (snap) {
+        var next = {};
+        snap.docs.forEach(function (d) { var v = d.data(); next[d.id] = !!(v && v.done); });
+        ticks = next;
+        render();
+      }, function () { setStatus("Lost the live connection. Reload the page.", true); });
+      db.collection("owners").onSnapshot(function (snap) {
+        var next = {};
+        snap.docs.forEach(function (d) { var v = d.data(); next[d.id] = (v && typeof v.name === "string") ? v.name.slice(0, 40) : ""; });
+        owners = next;
+        render();
+      }, function () { setStatus("Lost the live connection. Reload the page.", true); });
+    }, function () { setStatus("Live sync is not available here", true); render(); });
+  }
+  start();
+})();
+</script>
+
+</body></html>

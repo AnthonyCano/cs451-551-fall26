@@ -1,0 +1,426 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>L-Store Milestone 1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #F3F6F8;
+    --surface: #FFFFFF;
+    --ink: #15212B;
+    --muted: #586A78;
+    --line: #C3CFD8;
+    --grid: #DCE4EA;
+    --base: #24619E;
+    --base-soft: #DCE8F4;
+    --tail: #B5470F;
+    --tail-soft: #F7E3D6;
+    --display: "Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+    --body: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0E151B;
+      --surface: #151F27;
+      --ink: #E2E9EF;
+      --muted: #94A5B2;
+      --line: #34444F;
+      --grid: #24323C;
+      --base: #6FA9E6;
+      --base-soft: #1B3249;
+      --tail: #F0915A;
+      --tail-soft: #43271A;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0E151B;
+    --surface: #151F27;
+    --ink: #E2E9EF;
+    --muted: #94A5B2;
+    --line: #34444F;
+    --grid: #24323C;
+    --base: #6FA9E6;
+    --base-soft: #1B3249;
+    --tail: #F0915A;
+    --tail-soft: #43271A;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 15px;
+    line-height: 1.55;
+    padding: 0 16px;
+  }
+  .wrap { max-width: 1040px; margin: 0 auto; padding-block: 40px 64px; display: grid; gap: 44px; }
+
+  header { display: grid; gap: 10px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 5vw, 44px); line-height: 1.08; margin: 0; text-wrap: balance; }
+  .lede { max-width: 64ch; color: var(--muted); margin: 0; }
+  .due { display: inline-flex; gap: 8px; align-items: baseline; font-family: var(--mono); font-size: 13px; border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; justify-self: start; background: var(--surface); }
+  .due b { color: var(--tail); font-weight: 500; }
+
+  .goals { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+  .goal { background: var(--surface); padding: 16px 18px; display: grid; gap: 4px; align-content: start; }
+  .goal .tag { font-family: var(--mono); font-size: 12px; color: var(--base); }
+  .goal h3 { margin: 0; font-family: var(--display); font-size: 19px; font-weight: 700; }
+  .goal p { margin: 0; color: var(--muted); font-size: 14px; }
+
+  section { display: grid; gap: 14px; }
+  h2 { font-family: var(--display); font-size: 24px; font-weight: 700; margin: 0; text-wrap: balance; }
+  section > p { margin: 0; max-width: 68ch; }
+
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 18px 14px; display: grid; gap: 12px; }
+  .scroll { overflow-x: auto; }
+  .scroll svg { display: block; min-width: 720px; width: 100%; height: auto; }
+  figcaption { font-size: 13.5px; color: var(--muted); max-width: 80ch; }
+
+  /* SVG styling through page tokens */
+  svg { color: var(--ink); font-family: var(--body); }
+  .box { fill: var(--surface); stroke: var(--ink); stroke-width: 1.3; }
+  .box-base { fill: var(--base-soft); stroke: var(--base); stroke-width: 1.3; }
+  .box-tail { fill: var(--tail-soft); stroke: var(--tail); stroke-width: 1.3; }
+  .frame { fill: none; stroke: var(--line); stroke-width: 1.2; }
+  .dash { fill: none; stroke: var(--muted); stroke-width: 1.2; stroke-dasharray: 4 4; }
+  .edge { fill: none; stroke: var(--ink); stroke-width: 1.4; }
+  .edge-base { fill: none; stroke: var(--base); stroke-width: 1.8; }
+  .edge-tail { fill: none; stroke: var(--tail); stroke-width: 1.8; }
+  .cell { fill: var(--surface); stroke: var(--grid); stroke-width: 1; }
+  .cell-h { fill: var(--bg); stroke: var(--grid); stroke-width: 1; }
+  .cell-base { fill: var(--base-soft); stroke: var(--grid); stroke-width: 1; }
+  .cell-tail { fill: var(--tail-soft); stroke: var(--grid); stroke-width: 1; }
+  .fill-tail { fill: var(--tail); }
+  .fill-base { fill: var(--base); }
+  .fill-ink { fill: var(--ink); }
+  .t { fill: var(--ink); font-size: 13px; }
+  .t-b { fill: var(--ink); font-size: 14px; font-weight: 600; }
+  .t-m { fill: var(--muted); font-size: 12px; }
+  .t-code { fill: var(--ink); font-family: var(--mono); font-size: 11.5px; }
+  .t-code-m { fill: var(--muted); font-family: var(--mono); font-size: 11px; }
+  .t-base { fill: var(--base); font-size: 12.5px; font-weight: 600; }
+  .t-tail { fill: var(--tail); font-size: 12.5px; font-weight: 600; }
+
+  .steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  .steps li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 18px; font-size: 14px; padding: 8px 0; border-top: 1px solid var(--grid); }
+  .steps code { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+  .steps span { color: var(--muted); }
+  @media (max-width: 640px) { .steps li { grid-template-columns: 1fr; } }
+
+  .api { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .api th, .api td { text-align: left; padding: 9px 12px 9px 0; border-top: 1px solid var(--grid); vertical-align: top; }
+  .api th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 500; border-top: 0; }
+  .api code { font-family: var(--mono); font-size: 12.5px; }
+  .api td:last-child { color: var(--muted); }
+
+  .checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; }
+  .checks ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .checks h3 { font-family: var(--display); font-size: 17px; margin: 0 0 8px; }
+  .weight { font-family: var(--mono); color: var(--tail); }
+  code { font-family: var(--mono); font-size: .9em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">CS 451/551 · Fall 2026 · Assignment 1</div>
+    <h1>L-Store Milestone 1</h1>
+    <p class="lede">Build a single-threaded, in-memory, columnar database in Python. Inserts write base records. Updates append tail records. Reads follow the lineage from base to tail.</p>
+    <div class="due">Due <b>Oct 26, 2026 · 11:59pm</b></div>
+  </header>
+
+  <div class="goals">
+    <div class="goal"><span class="tag">S1</span><h3>Data model</h3><p>Columnar base and tail pages, grouped into page ranges. Metadata columns: indirection, RID, timestamp, schema encoding.</p></div>
+    <div class="goal"><span class="tag">S2</span><h3>Bufferpool</h3><p>Memory only for now. A page directory maps each RID to its page range, page and offset.</p></div>
+    <div class="goal"><span class="tag">S3</span><h3>Query interface</h3><p>insert, select, update and delete by key, plus sum of one column over a key range.</p></div>
+  </div>
+
+  <section>
+    <h2>How a select travels through the code</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 960 384" role="img" aria-label="Class map: __main__.py calls Query.select. Query asks Index for the RID, Table's page directory maps the RID to a page, and values return to Query as Records.">
+          <defs>
+            <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="currentColor"/></marker>
+          </defs>
+          <!-- nodes -->
+          <rect class="box" x="20" y="146" width="150" height="64" rx="4"/>
+          <text class="t-b" x="95" y="173" text-anchor="middle">__main__.py</text>
+          <text class="t-m" x="95" y="192" text-anchor="middle">autograder · testers</text>
+
+          <rect class="box" x="240" y="28" width="180" height="64" rx="4"/>
+          <text class="t-b" x="330" y="55" text-anchor="middle">Database</text>
+          <text class="t-code-m" x="330" y="74" text-anchor="middle">db.py</text>
+
+          <rect class="box" x="240" y="146" width="180" height="64" rx="4"/>
+          <text class="t-b" x="330" y="173" text-anchor="middle">Query</text>
+          <text class="t-code-m" x="330" y="192" text-anchor="middle">query.py</text>
+
+          <rect class="box" x="520" y="146" width="180" height="64" rx="4"/>
+          <text class="t-b" x="610" y="173" text-anchor="middle">Table</text>
+          <text class="t-code-m" x="610" y="192" text-anchor="middle">table.py · page_directory</text>
+
+          <rect class="box" x="520" y="264" width="180" height="64" rx="4"/>
+          <text class="t-b" x="610" y="291" text-anchor="middle">Index</text>
+          <text class="t-code-m" x="610" y="310" text-anchor="middle">index.py · key column</text>
+
+          <rect class="box-base" x="790" y="128" width="150" height="46" rx="4"/>
+          <text class="t-base" x="865" y="148" text-anchor="middle">Base pages</text>
+          <text class="t-code-m" x="865" y="164" text-anchor="middle">page.py</text>
+          <rect class="box-tail" x="790" y="184" width="150" height="46" rx="4"/>
+          <text class="t-tail" x="865" y="204" text-anchor="middle">Tail pages</text>
+          <text class="t-code-m" x="865" y="220" text-anchor="middle">page.py</text>
+
+          <!-- edges -->
+          <line class="edge" x1="170" y1="178" x2="238" y2="178" marker-end="url(#a1)"/>
+          <text class="t-code-m" x="204" y="170" text-anchor="middle">select()</text>
+
+          <line class="edge" x1="420" y1="70" x2="560" y2="144" marker-end="url(#a1)"/>
+          <text class="t-m" x="500" y="94">create_table()</text>
+
+          <path class="edge" d="M380 210 V296 H518" marker-end="url(#a1)"/>
+          <text class="t-code" x="392" y="288">1  locate(key)</text>
+          <text class="t-code-m" x="392" y="318">returns RID</text>
+
+          <line class="edge" x1="420" y1="178" x2="518" y2="178" marker-end="url(#a1)"/>
+          <text class="t-code" x="469" y="170" text-anchor="middle">2  RID</text>
+
+          <line class="edge" x1="700" y1="178" x2="788" y2="178" marker-end="url(#a1)"/>
+          <text class="t-code" x="744" y="170" text-anchor="middle">3  lookup</text>
+          <text class="t-code-m" x="744" y="196" text-anchor="middle">page, offset</text>
+
+          <path class="edge" d="M865 230 V360 H290 V212" marker-end="url(#a1)"/>
+          <text class="t-code" x="578" y="352" text-anchor="middle">4  column values, following indirection when schema bit = 1</text>
+          <text class="t-code-m" x="300" y="236">5  [Record]</text>
+        </svg>
+      </div>
+      <figcaption>Steps 1 to 5 are one <code>select(search_key, search_key_index, projected_columns_index)</code> call. The index finds the RID. The page directory turns the RID into a physical location. Only columns whose schema bit is 1 need a trip into the tail pages.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>One record, two updates</h2>
+    <p>The example uses the Grades table from <code>__main__.py</code>: 5 columns, key in column 0. Tail records here are non-cumulative, so columns that were not updated hold NULL (shown as —).</p>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1000 214" role="img" aria-label="Base record b1 has indirection pointing to tail record t2. Tail record t2 points back to the previous tail record t1. The base schema encoding 01100 marks grade columns 1 and 2 as updated.">
+          <defs>
+            <marker id="a2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="fill-base"/></marker>
+            <marker id="a2t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" class="fill-tail"/></marker>
+          </defs>
+
+          <text class="t-base" x="20" y="36">Base page · read-only</text>
+          <text class="t-tail" x="520" y="36">Tail page · append-only</text>
+
+          <!-- base header: widths 44 44 60 84 44 44 44 44, x from 20 -->
+          <g>
+            <rect class="cell-h" x="20" y="48" width="44" height="26"/><text class="t-code-m" x="42" y="65" text-anchor="middle">IND</text>
+            <rect class="cell-h" x="64" y="48" width="44" height="26"/><text class="t-code-m" x="86" y="65" text-anchor="middle">RID</text>
+            <rect class="cell-h" x="108" y="48" width="60" height="26"/><text class="t-code-m" x="138" y="65" text-anchor="middle">SCHEMA</text>
+            <rect class="cell-h" x="168" y="48" width="84" height="26"/><text class="t-code-m" x="210" y="65" text-anchor="middle">student id</text>
+            <rect class="cell-h" x="252" y="48" width="44" height="26"/><text class="t-code-m" x="274" y="65" text-anchor="middle">g1</text>
+            <rect class="cell-h" x="296" y="48" width="44" height="26"/><text class="t-code-m" x="318" y="65" text-anchor="middle">g2</text>
+            <rect class="cell-h" x="340" y="48" width="44" height="26"/><text class="t-code-m" x="362" y="65" text-anchor="middle">g3</text>
+            <rect class="cell-h" x="384" y="48" width="44" height="26"/><text class="t-code-m" x="406" y="65" text-anchor="middle">g4</text>
+          </g>
+          <!-- b1 -->
+          <g>
+            <rect class="cell-base" x="20" y="74" width="44" height="30"/><text class="t-code" x="42" y="93" text-anchor="middle" font-weight="600">t2</text>
+            <rect class="cell" x="64" y="74" width="44" height="30"/><text class="t-code" x="86" y="93" text-anchor="middle">b1</text>
+            <rect class="cell-base" x="108" y="74" width="60" height="30"/><text class="t-code" x="138" y="93" text-anchor="middle">01100</text>
+            <rect class="cell" x="168" y="74" width="84" height="30"/><text class="t-code" x="210" y="93" text-anchor="middle">906659671</text>
+            <rect class="cell" x="252" y="74" width="44" height="30"/><text class="t-code" x="274" y="93" text-anchor="middle">93</text>
+            <rect class="cell" x="296" y="74" width="44" height="30"/><text class="t-code" x="318" y="93" text-anchor="middle">0</text>
+            <rect class="cell" x="340" y="74" width="44" height="30"/><text class="t-code" x="362" y="93" text-anchor="middle">0</text>
+            <rect class="cell" x="384" y="74" width="44" height="30"/><text class="t-code" x="406" y="93" text-anchor="middle">0</text>
+          </g>
+          <!-- b2 -->
+          <g>
+            <rect class="cell" x="20" y="104" width="44" height="30"/><text class="t-code-m" x="42" y="123" text-anchor="middle">—</text>
+            <rect class="cell" x="64" y="104" width="44" height="30"/><text class="t-code" x="86" y="123" text-anchor="middle">b2</text>
+            <rect class="cell" x="108" y="104" width="60" height="30"/><text class="t-code" x="138" y="123" text-anchor="middle">00000</text>
+            <rect class="cell" x="168" y="104" width="84" height="30"/><text class="t-code" x="210" y="123" text-anchor="middle">906659672</text>
+            <rect class="cell" x="252" y="104" width="44" height="30"/><text class="t-code" x="274" y="123" text-anchor="middle">93</text>
+            <rect class="cell" x="296" y="104" width="44" height="30"/><text class="t-code" x="318" y="123" text-anchor="middle">0</text>
+            <rect class="cell" x="340" y="104" width="44" height="30"/><text class="t-code" x="362" y="123" text-anchor="middle">0</text>
+            <rect class="cell" x="384" y="104" width="44" height="30"/><text class="t-code" x="406" y="123" text-anchor="middle">0</text>
+          </g>
+          <!-- b3 -->
+          <g>
+            <rect class="cell" x="20" y="134" width="44" height="30"/><text class="t-code-m" x="42" y="153" text-anchor="middle">—</text>
+            <rect class="cell" x="64" y="134" width="44" height="30"/><text class="t-code" x="86" y="153" text-anchor="middle">b3</text>
+            <rect class="cell" x="108" y="134" width="60" height="30"/><text class="t-code" x="138" y="153" text-anchor="middle">00000</text>
+            <rect class="cell" x="168" y="134" width="84" height="30"/><text class="t-code" x="210" y="153" text-anchor="middle">906659673</text>
+            <rect class="cell" x="252" y="134" width="44" height="30"/><text class="t-code" x="274" y="153" text-anchor="middle">93</text>
+            <rect class="cell" x="296" y="134" width="44" height="30"/><text class="t-code" x="318" y="153" text-anchor="middle">0</text>
+            <rect class="cell" x="340" y="134" width="44" height="30"/><text class="t-code" x="362" y="153" text-anchor="middle">0</text>
+            <rect class="cell" x="384" y="134" width="44" height="30"/><text class="t-code" x="406" y="153" text-anchor="middle">0</text>
+          </g>
+
+          <!-- tail header, x from 520 -->
+          <g>
+            <rect class="cell-h" x="520" y="48" width="44" height="26"/><text class="t-code-m" x="542" y="65" text-anchor="middle">IND</text>
+            <rect class="cell-h" x="564" y="48" width="44" height="26"/><text class="t-code-m" x="586" y="65" text-anchor="middle">RID</text>
+            <rect class="cell-h" x="608" y="48" width="60" height="26"/><text class="t-code-m" x="638" y="65" text-anchor="middle">SCHEMA</text>
+            <rect class="cell-h" x="668" y="48" width="84" height="26"/><text class="t-code-m" x="710" y="65" text-anchor="middle">student id</text>
+            <rect class="cell-h" x="752" y="48" width="44" height="26"/><text class="t-code-m" x="774" y="65" text-anchor="middle">g1</text>
+            <rect class="cell-h" x="796" y="48" width="44" height="26"/><text class="t-code-m" x="818" y="65" text-anchor="middle">g2</text>
+            <rect class="cell-h" x="840" y="48" width="44" height="26"/><text class="t-code-m" x="862" y="65" text-anchor="middle">g3</text>
+            <rect class="cell-h" x="884" y="48" width="44" height="26"/><text class="t-code-m" x="906" y="65" text-anchor="middle">g4</text>
+          </g>
+          <!-- t1 -->
+          <g>
+            <rect class="cell" x="520" y="74" width="44" height="30"/><text class="t-code-m" x="542" y="93" text-anchor="middle">—</text>
+            <rect class="cell" x="564" y="74" width="44" height="30"/><text class="t-code" x="586" y="93" text-anchor="middle">t1</text>
+            <rect class="cell" x="608" y="74" width="60" height="30"/><text class="t-code" x="638" y="93" text-anchor="middle">01000</text>
+            <rect class="cell" x="668" y="74" width="84" height="30"/><text class="t-code-m" x="710" y="93" text-anchor="middle">—</text>
+            <rect class="cell-tail" x="752" y="74" width="44" height="30"/><text class="t-code" x="774" y="93" text-anchor="middle" font-weight="600">88</text>
+            <rect class="cell" x="796" y="74" width="44" height="30"/><text class="t-code-m" x="818" y="93" text-anchor="middle">—</text>
+            <rect class="cell" x="840" y="74" width="44" height="30"/><text class="t-code-m" x="862" y="93" text-anchor="middle">—</text>
+            <rect class="cell" x="884" y="74" width="44" height="30"/><text class="t-code-m" x="906" y="93" text-anchor="middle">—</text>
+          </g>
+          <!-- t2 -->
+          <g>
+            <rect class="cell-tail" x="520" y="104" width="44" height="30"/><text class="t-code" x="542" y="123" text-anchor="middle" font-weight="600">t1</text>
+            <rect class="cell" x="564" y="104" width="44" height="30"/><text class="t-code" x="586" y="123" text-anchor="middle">t2</text>
+            <rect class="cell" x="608" y="104" width="60" height="30"/><text class="t-code" x="638" y="123" text-anchor="middle">00100</text>
+            <rect class="cell" x="668" y="104" width="84" height="30"/><text class="t-code-m" x="710" y="123" text-anchor="middle">—</text>
+            <rect class="cell" x="752" y="104" width="44" height="30"/><text class="t-code-m" x="774" y="123" text-anchor="middle">—</text>
+            <rect class="cell-tail" x="796" y="104" width="44" height="30"/><text class="t-code" x="818" y="123" text-anchor="middle" font-weight="600">75</text>
+            <rect class="cell" x="840" y="104" width="44" height="30"/><text class="t-code-m" x="862" y="123" text-anchor="middle">—</text>
+            <rect class="cell" x="884" y="104" width="44" height="30"/><text class="t-code-m" x="906" y="123" text-anchor="middle">—</text>
+          </g>
+          <!-- dashed free slot -->
+          <rect class="dash" x="520" y="138" width="408" height="26" rx="2"/>
+          <text class="t-m" x="724" y="155" text-anchor="middle">next update appends here</text>
+
+          <!-- pointers -->
+          <path class="edge-base" d="M428 89 H474 V119 H518" marker-end="url(#a2b)"/>
+          <text class="t-base" x="444" y="190">b1.IND → newest</text>
+          <line x1="474" y1="119" x2="474" y2="176" class="dash"/>
+
+          <path class="edge-tail" d="M928 119 H954 V89 H930" marker-end="url(#a2t)"/>
+          <text class="t-tail" x="960" y="108">prev</text>
+        </svg>
+      </div>
+      <figcaption>Reading b1: the schema bits 01100 say g1 and g2 changed. Follow IND to t2: g2 = 75. Follow t2.IND to t1: g1 = 88. Columns with a 0 bit come straight from the base record. The timestamp column (<code>TIMESTAMP_COLUMN = 2</code>) is left out of the drawing for space.</figcaption>
+    </figure>
+    <ol class="steps">
+      <li><code>insert(906659671, 93, 0, 0, 0)</code><span>Writes base record b1. Schema 00000. IND empty.</span></li>
+      <li><code>update(906659671, None, 88, None, None, None)</code><span>Appends t1 with only g1 set. b1.IND = t1. b1 schema becomes 01000.</span></li>
+      <li><code>update(906659671, None, None, 75, None, None)</code><span>Appends t2 with t2.IND = t1. b1.IND = t2. b1 schema becomes 01100.</span></li>
+      <li><code>select(906659671, 0, [1, 1, 1, 1, 1])</code><span>Returns <code>[906659671, 88, 75, 0, 0]</code>.</span></li>
+      <li><code>delete(906659671)</code><span>Invalidates b1, t1 and t2 (special RID value or a delete flag). Physical removal waits for the merge in Milestone 2.</span></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Where records physically live</h2>
+    <figure>
+      <div class="scroll">
+        <svg viewBox="0 0 1000 300" role="img" aria-label="A page range holds 16 base pages and a shared, growing list of tail pages. Each base page is 9 physical 4096-byte pages, one per column.">
+          <rect class="frame" x="20" y="20" width="600" height="260" rx="6"/>
+          <text class="t-b" x="40" y="48">Page range 0</text>
+          <text class="t-m" x="140" y="48">disjoint set of records</text>
+
+          <text class="t-base" x="40" y="82">Base pages · 16 per range (example)</text>
+          <rect class="box-base" x="40" y="94" width="72" height="54" rx="3"/><text class="t-code" x="76" y="125" text-anchor="middle">BP0</text>
+          <rect class="box-base" x="124" y="94" width="72" height="54" rx="3"/><text class="t-code" x="160" y="125" text-anchor="middle">BP1</text>
+          <rect class="box-base" x="208" y="94" width="72" height="54" rx="3"/><text class="t-code" x="244" y="125" text-anchor="middle">BP2</text>
+          <text class="t" x="320" y="126" text-anchor="middle">…</text>
+          <rect class="box-base" x="360" y="94" width="72" height="54" rx="3"/><text class="t-code" x="396" y="125" text-anchor="middle">BP15</text>
+
+          <text class="t-tail" x="40" y="186">Tail pages · shared by all 16 base pages</text>
+          <rect class="box-tail" x="40" y="198" width="100" height="54" rx="3"/>
+          <rect class="fill-tail" x="40" y="242" width="100" height="10" opacity=".35"/>
+          <text class="t-code" x="90" y="225" text-anchor="middle">TP0 full</text>
+          <rect class="box-tail" x="152" y="198" width="100" height="54" rx="3"/>
+          <rect class="fill-tail" x="152" y="242" width="45" height="10" opacity=".35"/>
+          <text class="t-code" x="202" y="225" text-anchor="middle">TP1 filling</text>
+          <rect class="dash" x="264" y="198" width="100" height="54" rx="3"/>
+          <text class="t-code-m" x="314" y="225" text-anchor="middle">TP2</text>
+          <text class="t-m" x="378" y="222">allocated when</text>
+          <text class="t-m" x="378" y="238">TP1 fills</text>
+
+          <!-- zoom connectors -->
+          <line class="dash" x1="112" y1="94" x2="680" y2="40"/>
+          <line class="dash" x1="112" y1="148" x2="680" y2="262"/>
+
+          <rect class="box" x="680" y="40" width="300" height="222" rx="4"/>
+          <text class="t-b" x="696" y="64">BP0 = 9 physical pages</text>
+          <!-- strips: 9 x 28 wide, gap 4, start 696 -->
+          <g>
+            <rect class="cell-h" x="696" y="80" width="28" height="130"/>
+            <rect class="cell-h" x="728" y="80" width="28" height="130"/>
+            <rect class="cell-h" x="760" y="80" width="28" height="130"/>
+            <rect class="cell-h" x="792" y="80" width="28" height="130"/>
+            <rect class="cell-base" x="824" y="80" width="28" height="130"/>
+            <rect class="cell-base" x="856" y="80" width="28" height="130"/>
+            <rect class="cell-base" x="888" y="80" width="28" height="130"/>
+            <rect class="cell-base" x="920" y="80" width="28" height="130"/>
+            <rect class="cell-base" x="952" y="80" width="20" height="130"/>
+          </g>
+          <g class="t-code-m" font-size="10">
+            <text x="710" y="226" text-anchor="middle" class="t-code-m" font-size="10">IND</text>
+            <text x="742" y="226" text-anchor="middle" class="t-code-m" font-size="10">RID</text>
+            <text x="774" y="226" text-anchor="middle" class="t-code-m" font-size="10">TS</text>
+            <text x="806" y="226" text-anchor="middle" class="t-code-m" font-size="10">SCH</text>
+            <text x="838" y="226" text-anchor="middle" class="t-code-m" font-size="10">id</text>
+            <text x="870" y="226" text-anchor="middle" class="t-code-m" font-size="10">g1</text>
+            <text x="902" y="226" text-anchor="middle" class="t-code-m" font-size="10">g2</text>
+            <text x="934" y="226" text-anchor="middle" class="t-code-m" font-size="10">g3</text>
+            <text x="962" y="226" text-anchor="middle" class="t-code-m" font-size="10">g4</text>
+          </g>
+          <text class="t-m" x="696" y="250">each strip: bytearray(4096) = 512 × 64-bit values</text>
+        </svg>
+      </div>
+      <figcaption>Storage is columnar: one physical page per column, so a base page or tail page is a logical group of physical pages. A 4096-byte page fits 512 64-bit integers, so one base page holds 512 records. Tail and base pages use the same <code>Page</code> class. Merging tail pages back into base pages comes in Milestone 2.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <h2>Query API to implement</h2>
+    <div class="scroll">
+      <table class="api">
+        <thead><tr><th>Method</th><th>Returns</th></tr></thead>
+        <tbody>
+          <tr><td><code>insert(*columns)</code></td><td>True, or False on failure. Every column must be non-NULL.</td></tr>
+          <tr><td><code>select(search_key, search_key_index, projected_columns_index)</code></td><td>List of Record objects with only the projected columns.</td></tr>
+          <tr><td><code>update(primary_key, *columns)</code></td><td>True or False. <code>None</code> means "leave this column unchanged".</td></tr>
+          <tr><td><code>delete(primary_key)</code></td><td>True, or False if the key does not exist.</td></tr>
+          <tr><td><code>sum(start_range, end_range, aggregate_column_index)</code></td><td>Sum of one column over the key range, or False if the range is empty.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Grading and submission</h2>
+    <div class="checks">
+      <div>
+        <h3>Required</h3>
+        <ul>
+          <li>Implement the APIs in <code>db.py</code>, <code>query.py</code>, <code>table.py</code> and <code>index.py</code>.</li>
+          <li>Index the key column by default.</li>
+          <li>Build base and tail pages and records correctly.</li>
+          <li>The autograder entry point must run and pass: <span class="weight">50%</span> of the grade, or zero for that part if it fails.</li>
+          <li>One group member submits the package on Canvas.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Optional extras</h3>
+        <ul>
+          <li>Secondary indexes, <code>drop_index</code>.</li>
+          <li>Cumulative vs non-cumulative tail records, measured with up to a few million records.</li>
+          <li>Different page sizes, with graphs like those in the L-Store paper.</li>
+          <li>Self-test with <code>m1_tester.py</code> and <code>exam_tester_m1.py</code>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+</div>
+
+</body></html>
