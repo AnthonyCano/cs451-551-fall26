@@ -1,5 +1,3 @@
-from email.mime import base
-
 from lstore.table import (
     Table,
     Record,
@@ -133,7 +131,14 @@ class Query:
     # Assume that select will never be called on a key that doesn't exist
     """
     def select_version(self, search_key, search_key_index, projected_columns_index, relative_version):
-        pass
+        try:
+            records = []
+            for rid in self._matching_base_rids(search_key, search_key_index):
+                row = self.table.get_version(rid, relative_version)
+                records.append(self._to_record(rid, row, projected_columns_index))
+            return records
+        except Exception:
+            return False
 
     
     """
@@ -186,7 +191,7 @@ class Query:
     # Returns False if no record exists in the given range
     """
     def sum(self, start_range, end_range, aggregate_column_index):
-        pass
+        return self.sum_version(start_range, end_range, aggregate_column_index, 0)
 
     
     """
@@ -199,7 +204,14 @@ class Query:
     # Returns False if no record exists in the given range
     """
     def sum_version(self, start_range, end_range, aggregate_column_index, relative_version):
-        pass
+        try:
+            rids = self.table.index.locate_range(start_range, end_range, self.table.key)
+            if not rids:
+                return False
+            column = NUM_METADATA_COLUMNS + aggregate_column_index
+            return sum(self.table.get_version(rid, relative_version)[column] for rid in rids)
+        except Exception:
+            return False
 
     
     """
@@ -211,10 +223,17 @@ class Query:
     # Returns False if no record matches key or if target record is locked by 2PL.
     """
     def increment(self, key, column):
-        r = self.select(key, self.table.key, [1] * self.table.num_columns)[0]
-        if r is not False:
+        # Fixed from skeleton: select() returns a list of Record objects, so the value
+        # is records[0].columns[column] (Record isn't subscriptable). Also check for
+        # False/[] before indexing so a missing key returns False instead of crashing.
+        try:
+            records = self.select(key, self.table.key, [1] * self.table.num_columns)
+            if not records:
+                return False  # select failed (False) or no such key ([])
+            r = records[0]
             updated_columns = [None] * self.table.num_columns
-            updated_columns[column] = r[column] + 1
+            updated_columns[column] = r.columns[column] + 1
             u = self.update(key, *updated_columns)
             return u
-        return False
+        except Exception:
+            return False
