@@ -5,3 +5,6 @@ BASE_PAGES_PER_RANGE = 16
 NUM_METADATA_COLUMNS = 4
 NULL = -(2**63)
 DELETED_RID = 0
+BUFFERPOOL_SIZE = 256  # frames (pages), not bytes
+MERGE_THRESHOLD = 512  # tail records per range before a merge starts
+BASE_RID_COLUMN = 4

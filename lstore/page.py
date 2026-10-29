@@ -34,6 +34,19 @@ class Page:
         offset = slot * RECORD_SIZE
         struct.pack_into("<q", self.data, offset, value)
 
+    # On disk: the raw 4096 page bytes, then num_records as an 8-byte trailer
+    def to_bytes(self):
+        return bytes(self.data) + struct.pack("<q", self.num_records)
+
+    @classmethod
+    def from_bytes(cls, raw):
+        if len(raw) != PAGE_SIZE + RECORD_SIZE:
+            raise ValueError(f"page file must be {PAGE_SIZE + RECORD_SIZE} bytes, got {len(raw)}")
+        page = cls()
+        page.data = bytearray(raw[:PAGE_SIZE])
+        page.num_records = struct.unpack_from("<q", raw, PAGE_SIZE)[0]
+        return page
+
 
 class PageRange:
 
