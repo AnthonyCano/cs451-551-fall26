@@ -69,7 +69,7 @@ class Query:
                 self.table.write_meta(current_rid, RID_COLUMN, DELETED_RID)
                 current_rid = previous_rid
             self.table.write_meta(base_rid, RID_COLUMN, DELETED_RID)
-            self.table.index.remove(primary_key)
+            self.table.index.remove(self.table.key, primary_key, base_rid)
             return True
         except Exception:
             return False
@@ -91,7 +91,7 @@ class Query:
             if self._base_rid(key) is not None:
                 return False 
             rid = self.table.insert_base(columns)
-            self.table.index.add(key, rid)
+            self.table.index.add(self.table.key, key, rid)
             return True
         except Exception:
             return False
@@ -175,8 +175,8 @@ class Query:
             self.table.write_meta(base_rid, SCHEMA_ENCODING_COLUMN,
                                   base_row[SCHEMA_ENCODING_COLUMN] | schema)
             if is_key_change:
-                self.table.index.remove(primary_key)
-                self.table.index.add(new_key, base_rid)
+                self.table.index.remove(new_key, base_rid)
+                self.table.index.add(self.table.key, new_key, base_rid)
             return True
         except Exception:
             return False
