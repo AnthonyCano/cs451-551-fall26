@@ -73,6 +73,20 @@ class Table:
     # first slip, otherwise the previous slip. That tells us which wing to use.
     # Note: we do not touch the book's sticky note here. Whoever files the slip
     # (query.update) moves it with write_meta once the slip exists.
+    """
+    # NOTE from Rayna to Vik:
+    Vik, query.update now passes base_rid=<base record's RID> to append_tail as soon
+    as NUM_METADATA_COLUMNS > BASE_RID_COLUMN. To turn it on:
+      1. config.py: set NUM_METADATA_COLUMNS = 5 (BASE_RID_COLUMN = 4 already exists).
+      2. Change this signature to append_tail(self, columns, indirection, schema, base_rid)
+         and build the row as [indirection, rid, int(time()), schema, base_rid] + columns.
+      3. insert_base must also fill slot 4 so base and tail rows have the same width,
+         e.g. [rid, rid, int(time()), 0, rid] + columns (a base record's BaseRID is itself).
+      4. Your merge can then read row[BASE_RID_COLUMN] on each tail to find its base record.
+        db.py's _load_table sizes pages from NUM_METADATA_COLUMNS, so it adjusts automatically.
+        Make both changes in the same commit: bumping config alone makes query pass base_rid
+        to the old signature, and every update would return False.
+    """
     def append_tail(self, columns, indirection, schema):
         rid = self._new_rid()
         wing_idx = self.page_directory[indirection][0]
@@ -81,6 +95,20 @@ class Table:
         self.page_directory[rid] = (wing_idx, True, page_idx, slot)
         return rid
 
+    """
+    # NOTE from Rayna to Vik:
+    Vik, query.py wraps every record access in `with self._pinned(rid):`, which calls
+    table.pin(rid) / table.unpin(rid) as soon as those methods exist (it checks with
+    getattr, so nothing breaks before then). Please add:
+        def pin(self, rid):    look up page_directory[rid] -> (range_idx, is_tail, page_idx, slot)
+                               and call bufferpool.pin(key) for each column, key =
+                               (self.name, range_idx, is_tail, page_idx, column)
+        def unpin(self, rid):  same keys, bufferpool.unpin(key)
+    Query always unpins in a `finally`, so pins stay balanced even when a query fails.
+    insert_base / append_tail should pin the page they write to themselves (query has
+    no RID yet at that point) and call bufferpool.mark_dirty(key) after writing.
+    write_meta should also call mark_dirty.
+    """
     # Walk to the right wing/shelf via the floor map and copy out the whole row
     # (admin columns included). Unknown call number -> None.
     def read_record(self, rid):
