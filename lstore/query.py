@@ -75,7 +75,7 @@ class Query:
         if self.table.index.indices[column] is not None:
             return self.table.index.locate(column, value)
         matching_rids = []
-        for rid, (_, is_tail, _, _) in self.table.page_directory.items():
+        for rid, (_, is_tail, _, _) in list(self.table.page_directory.items()):
             if is_tail:
                 continue
             with self._pinned(rid):

@@ -73,7 +73,7 @@ class Index:
     def create_index(self, column_number):
         self.indices[column_number] = {}
 
-        for rid, (_, is_tail, _, _) in self.table.page_directory.items():
+        for rid, (_, is_tail, _, _) in list(self.table.page_directory.items()):
             if is_tail:
                 continue # Only index base records, tail records are reached through them
 
