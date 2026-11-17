@@ -1,44 +1,45 @@
-from lstore.table import Table, Record
-from lstore.index import Index
+import threading
+
 
 class TransactionWorker:
 
     """
     # Creates a transaction worker object.
     """
-    def __init__(self, transactions = []):
+    def __init__(self, transactions=None):
         self.stats = []
-        self.transactions = transactions
+        self.transactions = transactions or []  # not a shared default list
         self.result = 0
-        pass
+        self.thread = None
 
-    
     """
     Appends t to transactions
     """
     def add_transaction(self, t):
         self.transactions.append(t)
 
-        
     """
     Runs all transaction as a thread
     """
     def run(self):
-        pass
-        # here you need to create a thread and call __run
-    
+        self.thread = threading.Thread(target=self.__run)
+        self.thread.start()
 
     """
     Waits for the worker to finish
     """
     def join(self):
-        pass
-
+        if self.thread is not None:
+            self.thread.join()
 
     def __run(self):
         for transaction in self.transactions:
+            # no-wait 2PL: retry lock aborts, give up on real failures (e.g. duplicate key)
+            # shortcut: drop getattr once Transaction always sets lock_failed
+            while not (committed := transaction.run()):
+                if not getattr(transaction, "lock_failed", False):
+                    break
             # each transaction returns True if committed or False if aborted
-            self.stats.append(transaction.run())
+            self.stats.append(committed)
         # stores the number of transactions that committed
         self.result = len(list(filter(lambda x: x, self.stats)))
-
