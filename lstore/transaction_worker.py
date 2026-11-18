@@ -37,9 +37,8 @@ class TransactionWorker:
     def __run(self):
         for transaction in self.transactions:
             # no-wait 2PL: retry lock aborts, give up on real failures (e.g. duplicate key)
-            # shortcut: drop getattr once Transaction always sets lock_failed
             while not (committed := transaction.run()):
-                if not getattr(transaction, "lock_failed", False):
+                if not transaction.lock_failed:
                     break
                 time.sleep(random.uniform(0, 0.005))
             # each transaction returns True if committed or False if aborted
