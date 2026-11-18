@@ -1,4 +1,6 @@
+import random
 import threading
+import time
 
 
 class TransactionWorker:
@@ -39,6 +41,7 @@ class TransactionWorker:
             while not (committed := transaction.run()):
                 if not getattr(transaction, "lock_failed", False):
                     break
+                time.sleep(random.uniform(0, 0.005))
             # each transaction returns True if committed or False if aborted
             self.stats.append(committed)
         # stores the number of transactions that committed
