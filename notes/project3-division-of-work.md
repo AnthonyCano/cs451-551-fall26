@@ -91,3 +91,18 @@ Lock key = the record's **primary key value**.
 
 - [ ] Lock granularity: primary key value (proposed) or base RID?
 - [ ] Who submits on Canvas?
+
+---
+
+## Table API notes for Rayna (from Vik)
+
+`table.py` now has `table.latch` (one `RLock`) and the three undo helpers. How to use them from `query.py`:
+
+- **Latch:** every public table call (`insert_base`, `append_tail`, `read_record`, `write_meta`, `get_version`) already takes it. The undo helpers take it too, so don't wrap them. Your X/S locks protect the *record*; the latch protects the *table structures* (page directory, RIDs, merge install).
+- **Atomic multi-step work:** `update` does read, `append_tail` and `write_meta` as separate calls. The X lock keeps other transactions out, but a merge install could still land between the calls. Wrap the three steps in `with self.table.latch:`. It is an `RLock`, so nesting is safe.
+- **`undo_insert(base_rid)`:** withdraws the base (`RID = 0`). You remove the key from every index yourself.
+- **`undo_update(base_rid, tail_rid, old_indirection, old_schema)`:** read `old_indirection` and `old_schema` from `read_record(base_rid)` **before** `append_tail`. `tail_rid` is what `append_tail` returned. It withdraws the tail and restores the base's indirection and schema, and it repairs the base if a merge already folded that tail in. You put the old index values back.
+- **`undo_delete(base_rid, rids)`:** `rids` is every RID you stamped to `DELETED_RID`, **base included**. It writes each one back as its own RID. You add the index entries back.
+- Aborted rows keep `RID == DELETED_RID`. Scans (`_matching_base_rids`, `create_index`) and `__merge` already skip them.
+- `log_undo` order: Anthony runs the undo log in reverse, so log the table undo and the index fix as one function, or table first, then index.
+- Self-check: `python test_table_undo.py`.

@@ -50,13 +50,23 @@ class Table:
         self.merge_lock = threading.Lock()
         self.merge_results = []
         self.merge_threads = []
+        # One coarse latch for the whole floor map. Re-entrant because the public
+        # calls nest (insert_base -> _apply_merges -> append_tail ...). With the GIL
+        # finer latches would gain nothing. Lock order: latch, then pool lock.
+        # The merge thread never takes the latch, so it can't deadlock with it.
+        self.latch = threading.RLock()
+        # (slip, book) pairs aborted while a merge of their wing was still running.
+        # That merge may have copied the dead slip into the reprinted pages, so the
+        # install fixes those books up
+        self.aborted_tails = []
         self.index = Index(self)
 
     # Stamp the next call number and hand it out
     def _new_rid(self):
-        rid = self.next_rid
-        self.next_rid += 1
-        return rid
+        with self.latch:
+            rid = self.next_rid
+            self.next_rid += 1
+            return rid
 
     # Every shelf has 5 admin columns (sticky note, call number, date, checkboxes,
     # original book's call number) in front of the real columns
@@ -84,12 +94,13 @@ class Table:
     # New book arrives. Its sticky note points at itself (no slips yet), its
     # checkboxes are empty, and its BaseRID is itself. Returns the call number.
     def insert_base(self, columns):
-        self._apply_merges()
-        rid = self._new_rid()
-        row = [rid, rid, int(time()), 0, rid] + list(columns)
-        wing_idx, page_idx, slot = self._shelve_base(row)
-        self.page_directory[rid] = (wing_idx, False, page_idx, slot)
-        return rid
+        with self.latch:
+            self._apply_merges()
+            rid = self._new_rid()
+            row = [rid, rid, int(time()), 0, rid] + list(columns)
+            wing_idx, page_idx, slot = self._shelve_base(row)
+            self.page_directory[rid] = (wing_idx, False, page_idx, slot)
+            return rid
 
     # File an errata slip in the back room of the SAME wing as its book.
     # `indirection` is whatever the slip points back to: the book itself for the
@@ -98,14 +109,15 @@ class Table:
     # Note: we do not touch the book's sticky note here. Whoever files the slip
     # (query.update) moves it with write_meta once the slip exists.
     def append_tail(self, columns, indirection, schema, base_rid):
-        self._apply_merges()
-        rid = self._new_rid()
-        wing_idx = self.page_directory[indirection][0]
-        row = [indirection, rid, int(time()), schema, base_rid] + list(columns)
-        page_idx, slot = self.page_ranges[wing_idx].append_tail(row)
-        self.page_directory[rid] = (wing_idx, True, page_idx, slot)
-        self._maybe_merge(wing_idx)
-        return rid
+        with self.latch:
+            self._apply_merges()
+            rid = self._new_rid()
+            wing_idx = self.page_directory[indirection][0]
+            row = [indirection, rid, int(time()), schema, base_rid] + list(columns)
+            page_idx, slot = self.page_ranges[wing_idx].append_tail(row)
+            self.page_directory[rid] = (wing_idx, True, page_idx, slot)
+            self._maybe_merge(wing_idx)
+            return rid
 
     # Put the "in use" card on every column page of a record so the bufferpool
     # can't evict them. Does nothing when there is no bufferpool.
@@ -132,20 +144,22 @@ class Table:
     # (admin columns included). Unknown call number -> None.
     # Note: this is the raw row. For a merged book the TPS shortcut lives in get_version
     def read_record(self, rid):
-        self._apply_merges()
-        if rid not in self.page_directory:
-            return None
-        wing_idx, is_tail, page_idx, slot = self.page_directory[rid]
-        return self.page_ranges[wing_idx].read(is_tail, page_idx, slot)
+        with self.latch:
+            self._apply_merges()
+            if rid not in self.page_directory:
+                return None
+            wing_idx, is_tail, page_idx, slot = self.page_directory[rid]
+            return self.page_ranges[wing_idx].read(is_tail, page_idx, slot)
 
     # Scribble on one admin cell of a book or slip (move a sticky note,
     # tick a checkbox, stamp WITHDRAWN). Returns False if we can't find the call number.
     def write_meta(self, rid, column, value):
-        if rid not in self.page_directory:
-            return False
-        wing_idx, is_tail, page_idx, slot = self.page_directory[rid]
-        self.page_ranges[wing_idx].write_cell(is_tail, page_idx, slot, column, value)
-        return True
+        with self.latch:
+            if rid not in self.page_directory:
+                return False
+            wing_idx, is_tail, page_idx, slot = self.page_directory[rid]
+            self.page_ranges[wing_idx].write_cell(is_tail, page_idx, slot, column, value)
+            return True
 
     # Fetch a book as it looked `relative_version` corrections ago:
     #   0 = latest slip, -1 = one slip back, -2 = two back, ...
@@ -153,7 +167,13 @@ class Table:
     # "previous slip was #Y" notes. Because slips are cumulative, whichever slip
     # we land on already holds the full row, so no stitching is needed.
     # Asking for further back than the history goes gives you the original book.
+    # Held under the latch the whole way: several reads in a row must not straddle
+    # a merge install or another thread's half-filed slip.
     def get_version(self, base_rid, relative_version):
+        with self.latch:
+            return self._get_version(base_rid, relative_version)
+
+    def _get_version(self, base_rid, relative_version):
         book = self.read_record(base_rid)
         if book is None:
             return None
@@ -243,13 +263,18 @@ class Table:
         with self.merge_lock:
             self.merge_results.append((wing_idx, base_pages, max_rid, tail_count, needs_copy, originals))
 
-    # Foreground thread only: install finished merges.
+    # Install finished merges. Runs under the latch on whichever worker thread gets
+    # here first, so an install can't land while another thread is mid-update.
     # shortcut: instead of repointing the page directory at brand new pages we copy
     # the merged bytes into the live page object, which has the same effect (the
     # directory entries never change) and keeps the bufferpool keys stable.
     def _apply_merges(self):
         if not self.merge_results:
             return
+        with self.latch:
+            self._install_merges()
+
+    def _install_merges(self):
         with self.merge_lock:
             results, self.merge_results = self.merge_results, []
         for wing_idx, base_pages, max_rid, tail_count, needs_copy, originals in results:
@@ -266,12 +291,23 @@ class Table:
             # BaseRID 0 so a later merge ignores it) as the oldest slip of each book.
             copies = 0
             for oldest_rid, base_rid in needs_copy:
+                if self.read_record(oldest_rid)[RID_COLUMN] == DELETED_RID:
+                    continue  # that slip was aborted after the merge scanned it
                 if base_rid in originals:
                     before = self.append_tail(originals[base_rid], base_rid, 0, 0)
                     self.write_meta(oldest_rid, INDIRECTION_COLUMN, before)
                     copies += 1
             wing.merged_tails = tail_count + copies
             wing.merging = False
+            # The merge may have copied a slip that was aborted while it ran: put the
+            # newest surviving version back into those books
+            still_waiting = []
+            for tail_rid, base_rid in self.aborted_tails:
+                if self.page_directory[tail_rid][0] != wing_idx:
+                    still_waiting.append((tail_rid, base_rid))
+                elif tail_rid <= max_rid:
+                    self._repair_base(base_rid, originals.get(base_rid))
+            self.aborted_tails = still_waiting
 
     # Wait for running merges and install them (used by Database.close)
     def finish_merges(self):
@@ -279,3 +315,55 @@ class Table:
             thread.join()
         self.merge_threads = []
         self._apply_merges()
+
+    # ---- undo (called by query.py when a transaction aborts) ----
+    # The caller still holds the transaction's X lock on the book, so nobody else
+    # touches it. Everything here is also under the latch so a merge can't install
+    # halfway through. Withdrawn (RID = 0) rows are skipped by merges and scans.
+
+    # A book shelved by an aborted insert: just withdraw it
+    def undo_insert(self, base_rid):
+        with self.latch:
+            self.write_meta(base_rid, RID_COLUMN, DELETED_RID)
+
+    # Withdraw the slip an aborted update filed and put the book's sticky note and
+    # checkboxes back the way they were
+    def undo_update(self, base_rid, tail_rid, old_indirection, old_schema):
+        with self.latch:
+            slip = self.read_record(tail_rid)
+            self.write_meta(tail_rid, RID_COLUMN, DELETED_RID)
+            restore = old_indirection
+            if restore == base_rid:
+                # if a merge already reprinted the book it also redirected this slip
+                # to a before-copy of the original. That is the version to go back to
+                restore = slip[INDIRECTION_COLUMN]
+            self.write_meta(base_rid, INDIRECTION_COLUMN, restore)
+            self.write_meta(base_rid, SCHEMA_ENCODING_COLUMN, old_schema)
+            wing = self.page_ranges[self.page_directory[base_rid][0]]
+            if tail_rid <= self._tps_of(base_rid):
+                self._repair_base(base_rid)  # already reprinted with the dead slip in it
+            elif wing.merging:
+                self.aborted_tails.append((tail_rid, base_rid))  # install will check
+
+    # Bring back everything a delete withdrew: the book and each of its slips.
+    # `rids` is every call number that was stamped 0. A call number is its own
+    # RID, so restoring means writing it back
+    def undo_delete(self, base_rid, rids):
+        with self.latch:
+            for rid in rids:
+                self.write_meta(rid, RID_COLUMN, rid)
+
+    # Reprint one book's user columns from its newest surviving slip. With no slip
+    # left the book falls back to `fallback` (its row from before the merge), if any
+    def _repair_base(self, base_rid, fallback=None):
+        latest = self.read_record(base_rid)[INDIRECTION_COLUMN]
+        if latest != base_rid:
+            values = self.read_record(latest)[NUM_METADATA_COLUMNS:]
+        elif fallback is not None:
+            values = fallback
+        else:
+            return
+        wing_idx, _, page_idx, slot = self.page_directory[base_rid]
+        wing = self.page_ranges[wing_idx]
+        for column, value in zip(range(NUM_METADATA_COLUMNS, self._physical_columns()), values):
+            wing.write_cell(False, page_idx, slot, column, value)
