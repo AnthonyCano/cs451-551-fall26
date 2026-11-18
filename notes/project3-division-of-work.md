@@ -11,15 +11,12 @@ Everyone keeps the files they worked on in A1/A2 (from git history).
 ## Shared interfaces (agree on these by Nov 18)
 
 ```python
-# lstore/lock_manager.py  (Anthony)
-current_txn() -> Transaction | None      # thread-local; None outside a transaction
-class LockManager:                       # one per Table: table.lock_manager
-    acquire(txn_id, key, mode) -> bool   # 'S' | 'X'; no wait; S->X upgrade if sole holder
-    release_all(txn_id)
+# lstore/lock_manager.py  (Anthony) -- done
+from lstore.lock_manager import lock, log_undo
 
-# Transaction  (Anthony)
-txn.lock(table, key, mode) -> bool       # sets txn.lock_failed on False
-txn.log_undo(fn)                         # fn() run in reverse order on abort
+lock(table, key, mode) -> bool   # 'S' | 'X'; no wait. Returns True outside a transaction.
+                                 # On False it has already set txn.lock_failed: just return False.
+log_undo(fn)                     # does nothing outside a transaction; fn() runs in reverse order on abort
 
 # Table undo helpers  (Vik)
 table.undo_insert(base_rid)
@@ -27,7 +24,7 @@ table.undo_update(base_rid, tail_rid, old_indirection, old_schema)
 table.undo_delete(base_rid, rids)
 ```
 
-Lock key = the record's **primary key value**.
+Lock key = `(table.name, primary key value)`. There is one global lock manager, so there is no `table.lock_manager`. A transaction may ask again for a lock it already holds, and S upgrades to X when it is the only holder.
 
 ---
 
@@ -57,7 +54,7 @@ Lock key = the record's **primary key value**.
 **Files you've been working on:** `query.py`, `table.py`
 **A3 files:** `query.py`
 
-- [ ] At the start of each query: `txn = current_txn()`. If it is `None`, run unlocked as today (the tester's main thread does this).
+- [ ] Call `lock(self.table, key, mode)` before touching a record and return `False` if it fails. No `current_txn()` check is needed: outside a transaction (the tester's main thread) `lock` returns `True` and `log_undo` does nothing.
 - [ ] `select` / `select_version` / `sum` / `sum_version`: S lock on the key of each matched record. If a lock fails, return `False`.
 - [ ] `insert`: X lock on the new key **before** the duplicate check. Then `log_undo` → `undo_insert` + remove from every index.
 - [ ] `update`: X lock. `m3_tester_part_2` runs a select and then an update on the same key in one transaction, so this has to **upgrade** the transaction's own S lock. Save the old indirection and schema, then `log_undo` → `undo_update` + put the old index values back. A key change locks both the old key and the new key.
@@ -69,13 +66,13 @@ Lock key = the record's **primary key value**.
 **Files you've been working on:** `index.py`, `db.py`, `query.py` (bottom half)
 **A3 files:** new `lock_manager.py`, `transaction.py`, `index.py`
 
-- [ ] `LockManager`: a dict `key → (mode, set(txn_ids))` behind a `threading.Lock`. No-wait grant rules: S is compatible with S, X is exclusive, and S upgrades to X when this transaction is the only holder. Keep a per-transaction set of held keys for `release_all`.
-- [ ] `current_txn()`: a `threading.local()` that `Transaction.run` sets and then clears in a `finally`.
-- [ ] `Transaction.run`: reset the undo log, `lock_failed` and held locks, set the thread-local, run the queries, and abort on any `False`.
-- [ ] `abort()`: run the undo log in reverse, then `release_all`, then return `False`. `commit()`: `release_all`, then return `True`. Strict 2PL: locks are released only here.
-- [ ] Give each transaction a unique id from `itertools.count()`. It keeps the same id across retries.
-- [ ] `index.py`: a `threading.RLock` in `add`, `remove`, `locate`, `locate_range` and `create_index`.
-- [ ] `db.py`: check that `close()` still flushes correctly once the workers have joined.
+- [x] Lock manager: a global dict `key → [mode, set(txn_ids)]` behind a `threading.Lock`. No-wait grant rules: S is compatible with S, X is exclusive, and S upgrades to X when this transaction is the only holder. A per-transaction set of held keys for `release_all`.
+- [x] Thread-local current transaction that `Transaction.run` sets and then clears in a `finally`.
+- [x] `Transaction.run`: reset the undo log and `lock_failed`, set the thread-local, run the queries, and abort when a result `is False`.
+- [x] `abort()`: run the undo log in reverse, then `release_all`, then return `False`. `commit()`: `release_all`, then return `True`. Strict 2PL: locks are released only here.
+- [x] Each transaction gets a unique id from `itertools.count()`. It keeps the same id across retries.
+- [x] `index.py`: a `threading.Lock` in `add`, `remove`, `locate`, `locate_range` and `drop_index`. `create_index` builds its dict without the lock, then assigns it under the lock.
+- [x] `db.py`: `close()` still flushes correctly once the workers have joined. No change needed.
 
 ---
 
@@ -89,7 +86,7 @@ Lock key = the record's **primary key value**.
 
 ## Open questions
 
-- [ ] Lock granularity: primary key value (proposed) or base RID?
+- [x] Lock granularity: primary key value, as `(table.name, key)`. An insert can lock its key before a RID exists.
 - [ ] Who submits on Canvas?
 
 ---
