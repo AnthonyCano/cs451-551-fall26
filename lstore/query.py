@@ -9,6 +9,16 @@ from lstore.table import (
 )
 from lstore.index import Index
 from lstore.config import NUM_METADATA_COLUMNS, DELETED_RID, BASE_RID_COLUMN
+from lstore.lock_manager import lock, log_undo
+
+"""
+P2 --> P3:
+Import lock and log_undo from the global lock manager (Anthony)
+lock(table, key, mode) takes an S or X lock on (table.name, key)
+log_undo(fn) saves fn to run in reverse order if the transaction aborts
+Outside a transaction lock returns True and log_undo does nothing,
+so the m1/m2 testers still run unlocked.
+"""
 
 
 class Query:
@@ -86,6 +96,35 @@ class Query:
                 matching_rids.append(rid)
         return matching_rids
 
+    """
+    P2 --> P3:
+    New helper. 
+    Locks are on the primary key, but select on a non-key column and sum only have RIDs
+    Read the key, lock it, then re-read the row under the lock
+    Returns False (lock busy), None (deleted meanwhile) or the row
+    """
+
+    # 2PL: lock a base record by its primary key, then read its row.
+    # returns false -> lock busy (lock() already set, caller returns False)
+    # returns none  -> record was deleted before we got the lock (caller skips it)
+    # returns row   -> the row at relative_version, read while holding the lock
+    def _lock_and_read(self, rid, mode, relative_version=0):
+        key_col = NUM_METADATA_COLUMNS + self.table.key
+        with self._pinned(rid):
+            # take primary key of latest version
+            key = self.table.get_version(rid, 0)[key_col]
+            if not lock(self.table, key, mode):
+                return False
+            # re-read under the lock: the first read happened before we held it
+            latest = self.table.get_version(rid, 0)
+            if latest[key_col] != key and not lock(self.table, latest[key_col], mode):
+                return False
+            if latest[RID_COLUMN] == DELETED_RID:
+                return None
+            if relative_version == 0:
+                return latest
+            return self.table.get_version(rid, relative_version)
+
     # turn row into a record with projected columns
     def _to_record(self, base_rid, row, projected_columns_index):
         values = row[NUM_METADATA_COLUMNS:]
@@ -107,15 +146,28 @@ class Query:
     Need to update all indices that contain the deleted record.
     """
 
+    """
+    P2 --> P3:
+    Delete takes X lock on the key before the lookup
+    Stamping runs under table.latch so a merge install can't land mid-walk
+    Every stamped RID (base included) is collected, and log_undo saves undo_delete
+    Also saves re-adding the index entries for an abort.
+    """
+
     # stamp all tail records and base record as deleted by setting RID to 0
     # remove the record from every index
     def delete(self, primary_key):
         try:
+            # 2PL: X lock on the key before looking it up
+            if not lock(self.table, primary_key, 'X'):
+                return False
             base_rid = self._base_rid(primary_key)
             if base_rid is None:
                 return False
-            # base record stays pinned while we read it and stamp its tails
-            with self._pinned(base_rid):
+            stamped = []  # every RID we set to DELETED_RID, for undo
+            # base record stays pinned while we read it and stamp its tails.
+            # latch: a merge install can't land between the reads and the stamps
+            with self.table.latch, self._pinned(base_rid):
                 # latest values, read before deleting
                 latest = self.table.get_version(base_rid, 0)[NUM_METADATA_COLUMNS:]
                 # stamp every slip taken out, newest first
@@ -124,11 +176,21 @@ class Query:
                     with self._pinned(current_rid):
                         previous_rid = self.table.read_record(current_rid)[INDIRECTION_COLUMN]
                         self.table.write_meta(current_rid, RID_COLUMN, DELETED_RID)
+                    stamped.append(current_rid)
                     current_rid = previous_rid
                 self.table.write_meta(base_rid, RID_COLUMN, DELETED_RID)
+                stamped.append(base_rid)
             # takes RID out of every index, not just the primary key
-            for column in self._indexed_columns():
+            indexed = self._indexed_columns()
+            for column in indexed:
                 self.table.index.remove(column, latest[column], base_rid)
+
+            # on abort: restore every stamped RID, then put the index entries back
+            def undo():
+                self.table.undo_delete(base_rid, stamped)
+                for column in indexed:
+                    self.table.index.add(column, latest[column], base_rid)
+            log_undo(undo)
             return True
         except Exception:
             return False
@@ -138,6 +200,12 @@ class Query:
     # Insert a record with specified columns
     # Return True upon succesful insertion
     # Returns False if insert fails for whatever reason
+    """
+    """
+    P2 --> P3:
+    Insert takes an X lock on the new key before the duplicate check
+    Two transactions can't both insert the same key.
+    log_undo saves undo_insert + removing the RID from every index for an abort
     """
     # has to have same # of columns as table, no none values, no duplicate primary key
     def insert(self, *columns):
@@ -149,12 +217,24 @@ class Query:
             if not all(self._valid_int(c) for c in columns):
                 return False
             key = columns[self.table.key]
+            # 2PL: X lock on the new key before the duplicate check
+            # two transactions can't both insert the same key
+            if not lock(self.table, key, 'X'):
+                return False
             if self._base_rid(key) is not None:
-                return False 
+                return False
             rid = self.table.insert_base(columns)
             # add the new record to every indexed column, not only the key
-            for column in self._indexed_columns():
+            indexed = self._indexed_columns()
+            for column in indexed:
                 self.table.index.add(column, columns[column], rid)
+
+            # on abort: withdraw the base record, then take it out of every index
+            def undo():
+                self.table.undo_insert(rid)
+                for column in indexed:
+                    self.table.index.remove(column, columns[column], rid)
+            log_undo(undo)
             return True
         except Exception:
             return False
@@ -169,6 +249,13 @@ class Query:
     # Returns False if record locked by TPL
     # Assume that select will never be called on a key that doesn't exist
     """
+    """
+    P2 --> P3:
+    Select takes an S lock on each matched record's key (through _lock_and_read)
+    On a primary key search the key is locked before the lookup
+    A busy lock returns False, so the worker retries the transaction
+    Rows deleted or no longer matching by the time we hold the lock are skipped
+    """
     # find matching record with specified key
     # give latest version of record with newest tail record
     # build new result
@@ -176,10 +263,19 @@ class Query:
         try:
             if not self._valid_select_args(search_key_index, projected_columns_index):
                 return False
+            # 2PL: on a primary key search, lock the key before the lookup
+            # makes sure set of matches can't change under us
+            if search_key_index == self.table.key and not lock(self.table, search_key, 'S'):
+                return False
             records = []
             for rid in self._matching_base_rids(search_key, search_key_index):
-                with self._pinned(rid):
-                    row = self.table.get_version(rid, 0)
+                row = self._lock_and_read(rid, 'S')
+                if row is False:
+                    return False   # lock busy: abort, worker retries
+                if row is None:
+                    continue       # deleted before we got the lock
+                if row[NUM_METADATA_COLUMNS + search_key_index] != search_key:
+                    continue       # value changed before we got the lock: no longer a match
                 records.append(self._to_record(rid, row, projected_columns_index))
             return records
         except Exception:
@@ -196,12 +292,31 @@ class Query:
     # Returns False if record locked by TPL
     # Assume that select will never be called on a key that doesn't exist
     """
+    """
+    P2 --> P3:
+    Same S locking as select
+    match is re-checked on the latest version
+    (that is what _matching_base_rids matched on)
+    older version is read while the lock is held
+    lock covers every version of the record.
+    """
     def select_version(self, search_key, search_key_index, projected_columns_index, relative_version):
         try:
             if not self._valid_select_args(search_key_index, projected_columns_index):
                 return False
+            # 2PL: on a primary key search, lock the key before the lookup
+            if search_key_index == self.table.key and not lock(self.table, search_key, 'S'):
+                return False
             records = []
             for rid in self._matching_base_rids(search_key, search_key_index):
+                latest = self._lock_and_read(rid, 'S')
+                if latest is False:
+                    return False   # lock busy: abort, worker retries
+                if latest is None:
+                    continue       # deleted before we got the lock
+                if latest[NUM_METADATA_COLUMNS + search_key_index] != search_key:
+                    continue       # latest value no longer matches
+                # lock held: safe to read the older version
                 with self._pinned(rid):
                     row = self.table.get_version(rid, relative_version)
                 records.append(self._to_record(rid, row, projected_columns_index))
@@ -221,6 +336,16 @@ class Query:
     This means adding another list to the update method.
     """
 
+    """
+    P2 --> P3:
+    Update takes an X lock on the key
+    upgrades the transaction's own S lock after a select on the same key
+    key change also X locks the new key
+    Read, append_tail and write_meta run under table.latch so a merge install can't land between them
+    Old indirection and schema are saved before append_tail
+    log_undo saves undo_update + restoring the old index values
+    """
+
     # none means to leave as is: no changes
     # check input and check key collision
     # build a tail record, file the tail record, move pointer, update schema encoding,
@@ -231,6 +356,10 @@ class Query:
                 return False
             if not all(c is None or self._valid_int(c) for c in columns):
                 return False
+            # 2PL: X lock on the key. Upgrades this transaction's own S lock
+            # when it already selected the same key (m3_tester_part_2)
+            if not lock(self.table, primary_key, 'X'):
+                return False
             base_rid = self._base_rid(primary_key)
             if base_rid is None:
                 return False
@@ -238,11 +367,19 @@ class Query:
                 return True
             new_key = columns[self.table.key]
             is_key_change = new_key is not None and new_key != primary_key
+            # a key change also locks the new key, before the collision check
+            if is_key_change and not lock(self.table, new_key, 'X'):
+                return False
             if is_key_change and self._base_rid(new_key) is not None:
-                return False 
-            # base record stays pinned from first read to last write
-            with self._pinned(base_rid):
+                return False
+            # base record stays pinned from first read to last write.
+            # latch: a merge install can't land between the read,
+            # append_tail and write_meta
+            with self.table.latch, self._pinned(base_rid):
                 base_row = self.table.read_record(base_rid)
+                # saved for undo_update: must be read before append_tail
+                old_indirection = base_row[INDIRECTION_COLUMN]
+                old_schema = base_row[SCHEMA_ENCODING_COLUMN]
                 old_values = list(self.table.get_version(base_rid, 0)[NUM_METADATA_COLUMNS:])
                 new_values = list(old_values)
                 schema = 0
@@ -262,10 +399,21 @@ class Query:
                 self.table.write_meta(base_rid, SCHEMA_ENCODING_COLUMN,
                                       base_row[SCHEMA_ENCODING_COLUMN] | schema)
             # indexes live in memory, not the bufferpool: no pin needed
-            for column in self._indexed_columns():
-                if old_values[column] != new_values[column]:
-                    self.table.index.remove(column, old_values[column], base_rid)
-                    self.table.index.add(column, new_values[column], base_rid)
+            changed = [c for c in self._indexed_columns()
+                       if old_values[c] != new_values[c]]
+            for column in changed:
+                self.table.index.remove(column, old_values[column], base_rid)
+                self.table.index.add(column, new_values[column], base_rid)
+
+            # on abort: withdraw the tail, restore indirection and schema,
+            # then put the old index values back
+            def undo():
+                self.table.undo_update(base_rid, new_tail_rid,
+                                       old_indirection, old_schema)
+                for column in changed:
+                    self.table.index.remove(column, new_values[column], base_rid)
+                    self.table.index.add(column, old_values[column], base_rid)
+            log_undo(undo)
             return True
         except Exception:
             return False
@@ -292,13 +440,34 @@ class Query:
     # Returns the summation of the given range upon success
     # Returns False if no record exists in the given range
     """
+    """
+    P2 --> P3:
+    Sum takes an S lock on every record in the range before adding it (through _lock_and_read)
+    busy lock returns False so the worker retries
+    Records deleted meanwhile are skipped. If none are left, return False.
+    sum() calls this with version 0, so it gets the same locking.
+    """
     def sum_version(self, start_range, end_range, aggregate_column_index, relative_version):
         try:
             rids = self.table.index.locate_range(start_range, end_range, self.table.key)
             if not rids:
                 return False
             column = NUM_METADATA_COLUMNS + aggregate_column_index
-            return sum(self.table.get_version(rid, relative_version)[column] for rid in rids)
+            total = 0
+            found = 0
+            # 2PL: S lock every record in the range before reading it
+            for rid in rids:
+                row = self._lock_and_read(rid, 'S', relative_version)
+                if row is False:
+                    return False   # lock busy: abort, worker retries
+                if row is None:
+                    continue       # deleted before we got the lock
+                total += row[column]
+                found += 1
+            # every record in the range was deleted meanwhile: same as an empty range
+            if found == 0:
+                return False
+            return total
         except Exception:
             return False
 
